@@ -303,6 +303,8 @@ function get_all_bttv_channels() {
                 var current_channel_loaded = loaded_channels[current_channel_name];
                 return previous_value && current_channel_loaded;
             }, true)
+            if(loaded_bttv)
+                document.dispatchEvent(dfsEvent);
         }
         get_bttv_by_url(bttv_channel_url_prefix + channel_name, done_with_loading);
     });
