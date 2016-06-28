@@ -24,6 +24,7 @@ chrome.storage.sync.get({
     mute: false,
 	filter_text: '',
 	site_filter_text: '',
+    bttv_channels_text: '',
 },function(items) {
     kappa = items.kappa;
     globals = items.globals;
@@ -43,6 +44,12 @@ chrome.storage.sync.get({
         site_filter_list.splice(site_filter_list.indexOf(''), 1);
     }
 
+    bttv_channels_text = items.bttv_channels_text;
+    bttv_channels_list = bttv_channels_text.split(/[,\s]+/);
+    if (bttv_channels_list.indexOf('') > -1) {
+        bttv_channels_list.splice(site_filter_list.indexOf(''), 1);
+    }
+    
     replace_words();
 });
 
@@ -84,6 +91,8 @@ loaded2 = false;
 loaded3 = false;
 loaded4 = false;
 
+loaded_bttv = false;
+
 function replace_words() {
     // "If there's no cached data" "or the data is a week old" "or if i goddamn tell you to remotely"
     if (kappa) {
@@ -102,6 +111,10 @@ function replace_words() {
 		get_bttv();
     } else loaded4 = true;
 
+    if(bttv_channels_list.length > 0) {
+        get_all_bttv_channels();
+    } else loaded_bttv = true;
+
     //"else, get it from some sort of cache" <- chrome storage api? limits and size and type (can dicts be values? do i need to json stringify it? Will that fit in chrome storage?)
 }
 
@@ -117,7 +130,7 @@ function do_dfs(evt) {
         }
     }
     cont = true;
-    if (cont && loaded1 && loaded2 && loaded3 && loaded4) {
+    if (cont && loaded1 && loaded2 && loaded3 && loaded4 && loaded_bttv) {
         dfs(document.body);
     }
 }
@@ -233,7 +246,7 @@ function get_globals() {
         done_with_loading();
     };
     xhr.onload = function() {
-		emote_d = JSON.parse(xhr.responseText)['emotes'];
+		var emote_d = JSON.parse(xhr.responseText)['emotes'];
 		for (var emote in emote_d) {
             if (filter_list.indexOf(emote) == -1) {
                 emote_dict[emote] = {url: url_template + emote_d[emote]['image_id'] + '/' + '1.0'};
@@ -275,29 +288,54 @@ function get_subs() {
     }
 }
 
+function get_all_bttv_channels() {
+    var loaded_channels = {};
+    bttv_channels_list.forEach(function(channel_name) {
+        loaded_channels[channel_name] = false;
+    });
+
+    var bttv_channel_url_prefix = '//api.betterttv.net/2/channels/';
+    bttv_channels_list.forEach(function(channel_name) {
+        function done_with_loading() {
+            loaded_channels[channel_name] = true;
+
+            loaded_bttv = Object.keys(loaded_channels).reduce(function(previous_value, current_channel_name) {
+                var current_channel_loaded = loaded_channels[current_channel_name];
+                return previous_value && current_channel_loaded;
+            }, true)
+        }
+        get_bttv_by_url(bttv_channel_url_prefix + channel_name, done_with_loading);
+    });
+}
+
 function get_bttv() {
-	var xhr = new XMLHttpRequest();
-    xhr.open('GET', '//api.betterttv.net/2/emotes');
-    xhr.send();
-    var url_template = "//cdn.betterttv.net/emote/"; // {{id}}/1x
     function done_with_loading() {
         loaded4 = true;
-		document.dispatchEvent(dfsEvent);
+        document.dispatchEvent(dfsEvent);
     }
+    
+    get_bttv_by_url('//api.betterttv.net/2/emotes', done_with_loading);
+}
+
+function get_bttv_by_url(url, done_with_loading) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', url);
+    xhr.send();
+    var url_template = "//cdn.betterttv.net/emote/"; // {{id}}/1x
     xhr.ontimeout = function() {
         done_with_loading();
     };
     xhr.onload = function() {
-        emote_list = JSON.parse(xhr.responseText)['emotes'];
-		for (var i in emote_list) {
+        var emote_list = JSON.parse(xhr.responseText)['emotes'];
+        for (var i in emote_list) {
             var dict = emote_list[i];
-			if(!containsDisallowedChar(dict['code']) && 
+            if(!containsDisallowedChar(dict['code']) &&
                 filter_list.indexOf(dict['code']) == -1) {
-				emote_dict[dict['code']] = {url:url_template+dict['id']+'/'+'1x'};
-			}
-		}
+                emote_dict[dict['code']] = {url:url_template+dict['id']+'/'+'1x'};
+            }
+        }
         done_with_loading();
-	}
+    }
 }
 
 function get_all_parents(elt) {
@@ -385,6 +423,7 @@ function replace_text(element) {
         //Read "Hey " -> replace "Kappa" -> read " " -> replace "Kappa" -> 
         //Read "Hey " -> replace "Kappa" -> read " " -> replace "Kappa" -> read " Hey"
         //Write the result to the DOM -> remove "Hey Kappa Kappa Hey Kappa Kappa Hey" from the DOM
+        
         for (var i=0; i < len; i++) {
             word = split[i];
             if (word in emote_dict && emote_dict[word]['url'] != undefined) {
